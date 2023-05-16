@@ -1,0 +1,62 @@
+import sys
+from config import config as cfg
+from datetime import datetime
+from common.colors import c
+from functools import wraps
+
+
+class Repeat:
+    def __init__(self, n=None):
+        self._n = cfg.REPEAT_COUNT if n is None else n
+
+    def __call__(self, func):
+        def inner(*args, **kwargs):
+            for _ in range(self._n):
+                current_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S.%f')
+                check, buffer = func(*args, **kwargs)
+                if check:
+                    if cfg.DEBUG:
+                        print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+                    else:
+                        sys.stdout.write('Идет обмен данными ...\r')
+                    sys.stdout.flush()
+                    return check, buffer
+                else:
+                    if buffer and len(buffer) != 0:
+                        if cfg.DEBUG:
+                            print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+            print(f'{c.WARNING}Нет ответа от устройства.{c.END}')
+            sys.exit()
+        return inner
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self._n})'
+
+
+def repeat(_func=None, *, count=None):
+    count = cfg.REPEAT_COUNT if count is None else count
+
+    def wrapper(func):
+        @wraps(func)
+        def inner(*args, **kwargs):
+            for _ in range(count):
+                current_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S.%f')
+                check, buffer = func(*args, **kwargs)
+                if check:
+                    if cfg.DEBUG:
+                        print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+                    else:
+                        sys.stdout.write('Идет обмен данными ...\r')
+                    sys.stdout.flush()
+                    return check, buffer
+                else:
+                    if buffer and len(buffer) != 0:
+                        if cfg.DEBUG:
+                            print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+            print(f'{c.WARNING}Нет ответа от устройства.{c.END}')
+            sys.exit()
+        return inner
+    if _func is None:
+        return wrapper
+    else:
+        return wrapper(_func)
