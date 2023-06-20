@@ -54,9 +54,20 @@ def repeat(_func=None, *, count=None):
                         if cfg.DEBUG:
                             print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
             print(f'{c.WARNING}Нет ответа от устройства.{c.END}')
-            sys.exit()
+            # sys.exit()
         return inner
     if _func is None:
         return wrapper
     else:
         return wrapper(_func)
+
+
+def multi_repeat(decorators):
+    def decor(func):
+        def wrapper(*args, **kwargs):
+            if kwargs.pop('multi', True):
+                return decorators(func)(*args, **kwargs)
+            else:
+                return decorators(func, count=1)(*args, **kwargs)
+        return wrapper
+    return decor

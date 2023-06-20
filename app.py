@@ -20,7 +20,7 @@ def main_menu():
         if ready in to_answer:
             main_menu()
         else:
-            print(f'{c.FAIL}Не верно указан параметр{c.END}\n')
+            # print(f'{c.FAIL}Не верно указан параметр{c.END}\n')
             sys.exit()
     except ValueError:
         pass
@@ -35,41 +35,41 @@ def choice(tmp):
         case 1:
             director.construct(device)
         case 2:
-            protocol.get_time(command.GET_TIME)
-        case 3:
-            protocol.set_time(command.SET_TIME)
-        case 4:
-            protocol.clear_meters(command.CLEAR_METERS)
-        case 5:
-            protocol.get_descriptor(command.GET_DESCRIPTOR)
-        case 6:
-            protocol.get_vectors(command.GET_VECTORS)
-        case 7:
-            protocol.get_password(command.GET_PASSWD)
-        case 8:
-            protocol.set_passwd(command.SET_PASSWD, device.IA.DEVICE_LEVEL, device.IA.DEVICE_PASSWORD)
-        case 9:
-            protocol.set_spodes(command.SET_SPODES)
-        case 10:
             event_menu()
             protocol.get_event(command.GET_EVENT)
-        case 11:
+        case 3:
+            protocol.get_time(command.GET_TIME)
+        case 4:
             protocol.set_data(command.SET_DATA)
-        case 12:
+        case 5:
+            protocol.set_time(command.SET_TIME)
+        case 6:
             protocol.get_shunt(command.GET_SHUNT, device.IA.DEVICE_VERSION)
-        case 13:
+        case 7:
+            protocol.clear_meters(command.CLEAR_METERS)
+        case 8:
             protocol.write_shunt(command.SET_SHUNT)
-        case 14:
+        case 9:
+            protocol.get_descriptor(command.GET_DESCRIPTOR)
+        case 10:
             protocol.write_meters(command.SET_METERS, device.IA.METERS_FILE, device.IA.DEVICE_REVISION)
-        case 15:
+        case 11:
+            protocol.get_vectors(command.GET_VECTORS)
+        case 12:
             protocol.update_firmware(command.UPDATE_FIRMWARE, device.IA.FIRMWARE_FILE)
-        case 16:
+        case 13:
+            protocol.get_password(command.GET_PASSWD)
+        case 14:
             protocol.write_serial_and_date(command.SET_SERIAL)
-        case 17:
+        case 15:
+            protocol.set_passwd(command.SET_PASSWD, device.IA.DEVICE_LEVEL, device.IA.DEVICE_PASSWORD)
+        case 16:
             event_menu()
             protocol.clear_event(command.SET_METERS, device.IA.CLEAR_EVENTS_FILE)
+        case 17:
+            protocol.set_spodes(command.SET_SPODES)
         case 18:
-            # protocol.close_session(command.CLOSE_SESSION)
+            # protocol.brutforce()
             class_brut.Brutforce().brut_password()
         case 0:
             sys.exit()

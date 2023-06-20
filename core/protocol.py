@@ -7,20 +7,21 @@ from common.colors import c
 from datetime import datetime
 from decorators.status import is_status
 from common import execute, hardware, parse_event
+from common.enum_command import ICommand
 from core.abstract_protocol import AbstractIncotexProtocol
 from common.check_response import check_response, check_out
 
 
 class IncotexProtocol(AbstractIncotexProtocol):
 
-    def test_channel(self, command: List[str]) -> None:
+    def test_channel(self, command: List[str], multi=True) -> None:
         """Тест канала связи """
-        out = self.exchange(command, 4)[1]
+        out = self.exchange(command, 4, multi=multi)[1]
         check_response(self.test_channel.__doc__, out)
 
-    def open_session(self, command: List[str]) -> None:
+    def open_session(self, command: List[str], multi=True) -> None:
         """Авторизация с устройством """
-        out = self.exchange(command, 4)[1]
+        out = self.exchange(command, 4, multi=multi)[1]
         if out[0]:
             self.status = True
         check_response(self.open_session.__doc__, out)
