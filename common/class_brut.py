@@ -85,14 +85,14 @@ class Brutforce(UartSerialPort):
             self.s.send(transfer)
             buffer = self.s.recv(4)
         else:
-            self.set_timeout(1)
+            # self.set_timeout(1)
             self.sp.write(transfer)
             buffer = self.sp.read(4)
 
         while buffer:
             print(f"Ответ от устройства >> {buffer.hex(' ', -1)}\n")
             print(f'Пароль найден - {input_pass}')
-            with open('password.txt', 'w') as f:
+            with open('log/password/password.txt', 'w') as f:
                 f.write(input_pass)
             self.bar.finish()
             return True

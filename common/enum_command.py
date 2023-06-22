@@ -21,6 +21,9 @@ class ICommand:
     CLEAR_METERS = ['03 20']
     GET_TIME = ['04 00']
     SET_TIME = ['03 0C']
+    LAST_PROFILE = ['08 13']
+    WRITE_BANK_1 = ['07 03']
+    WRITE_BANK_2 = ['07 04']
 
     @staticmethod
     def set_id(new_id):

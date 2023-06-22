@@ -54,7 +54,7 @@ def repeat(_func=None, *, count=None):
                         if cfg.DEBUG:
                             print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
             print(f'{c.WARNING}Нет ответа от устройства.{c.END}')
-            # sys.exit()
+            sys.exit()
         return inner
     if _func is None:
         return wrapper

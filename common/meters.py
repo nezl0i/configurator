@@ -2,8 +2,11 @@ import os
 import re
 import json
 
-path = os.path.join("meters", "meters.json")
-meter = json.load(open(path, encoding='utf8'))
+try:
+    path = os.path.join("meters", "meters.json")
+    meter = json.load(open(path, encoding='utf8'))
+except (Exception,):
+    pass
 
 
 def _reverse(lst):

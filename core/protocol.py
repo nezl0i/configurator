@@ -2,9 +2,11 @@ import re
 import sys
 import json
 from typing import List
+import pandas as pd
 from common import meters
 from common.colors import c
 from datetime import datetime
+from pathlib import Path
 from decorators.status import is_status
 from common import execute, hardware, parse_event
 from common.enum_command import ICommand
@@ -16,15 +18,20 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
     def test_channel(self, command: List[str], multi=True) -> None:
         """Тест канала связи """
-        out = self.exchange(command, 4, multi=multi)[1]
-        check_response(self.test_channel.__doc__, out)
+        out = self.exchange(command, 4, multi=multi)
+        if out and out[1][0]:
+            check_response(self.test_channel.__doc__, out[1])
+        else:
+            sys.exit()
 
     def open_session(self, command: List[str], multi=True) -> None:
         """Авторизация с устройством """
-        out = self.exchange(command, 4, multi=multi)[1]
-        if out[0]:
+        out = self.exchange(command, 4, multi=multi)
+        if out and out[1][0]:
             self.status = True
-        check_response(self.open_session.__doc__, out)
+            check_response(self.open_session.__doc__, out[1])
+        else:
+            sys.exit()
 
     @is_status
     def close_session(self, command: List[str]) -> None:
@@ -487,6 +494,128 @@ class IncotexProtocol(AbstractIncotexProtocol):
               f'Межсимвольный таймаут - {byte_timeout}\n'
               f'Таймаут не активности - {active_time}\n'
               f'Выполнение - {check_out(out[1])}{c.END}\n')
+
+    @staticmethod
+    def to_fixed(float_obj):
+        tmp_obj = float_obj.replace('.', '')
+        tmp_hex = format(int(tmp_obj), '04x')
+        return f'{tmp_hex[2:]} {tmp_hex[:2]}'
+
+    def write_profile(self, command: List[str], impulse: str) -> None:
+        """Запись профиля мощности"""
+        tariff_time = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30',
+                       '04:00', '04:30', '05:00', '05:30', '06:00', '06:30', '07:00', '23:30']
+
+        cmd = ICommand()
+        out = self.exchange(command, 12)
+
+        if out is None:
+            return
+
+        folder_count = 0
+        answer = out[1]
+        state = answer[3]  # байт состояния
+
+        if state == '00':
+            print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
+            return
+
+        status_byte = format(int(state, 16), "08b")
+        # tariff = status_byte[1:3]  # Признак действующего тарифа (00-тариф 1, 01-тариф 2, 02-тариф 3, 03-тариф 4)
+        # check_profile = status_byte[3]  # Признак профиля (0-основной, 1-дополнительный)
+        # check_time = status_byte[4]  # Признак сезонного времени (0-лето, 1-зима)
+        # flag_init = status_byte[5]  # Флаг выполнения инициализации памяти (0-нет, 1-да)
+        # flag_season = status_byte[6]  # Флаг неполного среза (0-нет, 1-да)
+        flag_array = int(status_byte[7])  # Флаг переполнения массива (0-нет, 1 да)
+
+        # Обработка файла профиля
+        folder = Path("profile")
+
+        if folder.is_dir():
+            folder_count = len([1 for _ in folder.iterdir()])
+
+        print(f"В папке {folder} {folder_count} объектов")
+
+        demo = pd.read_excel(f'{folder}/test.xlsx', sheet_name='30 мин', skiprows=7, keep_default_na=False).to_dict(
+            'list')
+
+        result_json = [val for val in demo.values()]
+
+        tmp = list(zip(*result_json))
+        tmp.pop(-1)
+
+        # Начальная дата для записи профиля из файла
+        to_first_date = tmp[0][0].split('.')
+
+        # Дата и время последней записи массива средних мощностей
+        last_time = datetime.strptime(f'20{answer[8]}-{answer[7]}-{answer[6]} {answer[4]}:{answer[5]}:00',
+                                      '%Y-%m-%d %H:%M:%S')
+        # Дата и время начала периода записи профиля мощности
+        first_time = datetime.strptime(f"{to_first_date[2]}-{to_first_date[1]}-{to_first_date[0]} 00:00:00",
+                                       '%Y-%m-%d %H:%M:%S')
+        if answer[1].startswith('0'):
+            offset = f"{''.join(answer[1:3])}"  # адрес последней записи массива средних мощностей
+        else:
+            offset = f"{''.join(answer[1:3])}"
+
+        int_offset = int(offset, 16)
+
+        # seconds = (last_time - first_time).total_seconds()
+        minutes = (last_time - first_time).total_seconds() / 60
+        # hours = int((last_time - first_time).total_seconds() / 1800)  # Количество получасовок в выбранном периоде
+
+        slices = int(minutes // 30)  # Количество срезов
+        print(f'Количество срезов {slices}')
+        print(f"Последняя запись по адресу 0x{offset} ({int_offset})")
+
+        if int_offset >= slices:
+            tmp_slices = int_offset - slices
+        else:
+            tmp_slices = 8192 - slices + int_offset
+
+        address = (tmp_slices + 1) * 16
+
+        tmp_offset = format(address, '04x')
+        current_offset = f'{tmp_offset[:2]} {tmp_offset[2:]}'
+
+        print(f"Старт записи с адреса {tmp_offset}")
+
+        ready = input('Продолжить? (y/n): ')
+        to_answer = ('y', 'yes', 'д', 'да')
+
+        if ready not in to_answer:
+            sys.exit()
+
+        for i in tmp:
+            state = '08'
+
+            date = i[0].replace('.', ' ').replace('202', '2')
+            time = i[1].replace(':', ' ')
+
+            if i[1] in tariff_time:
+                state = '28'
+
+            tmp_energy = f"{i[2] * int(impulse) / 10000:.{4}f}"
+            energy = self.to_fixed(tmp_energy)
+
+            if flag_array == 0:
+                cmd_command = cmd.WRITE_BANK_2
+            else:
+                state = str(int(state) + 1).zfill(2)
+                cmd_command = cmd.WRITE_BANK_1
+
+            send = f"{current_offset} 0F {state} {time} {date} 1E {energy} 00 00 00 00 00 00"
+
+            out = self.exchange(cmd_command, 4, param=send)[1]
+            check_response(self.write_profile.__doc__, out)
+
+            int_offset = int(tmp_offset, 16) + 16
+            if int_offset == 65536 or int_offset == 131071:
+                int_offset = 0
+                flag_array = flag_array ^ 1
+
+            tmp_offset = format(int_offset, '04x')
+            current_offset = f'{tmp_offset[:2]} {tmp_offset[2:]}'
 
 
 protocol = IncotexProtocol()

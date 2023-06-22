@@ -71,6 +71,10 @@ def choice(tmp):
         case 18:
             # protocol.brutforce()
             class_brut.Brutforce().brut_password()
+        case 19:
+            pass
+        case 20:
+            protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE)
         case 0:
             sys.exit()
 
