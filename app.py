@@ -72,7 +72,7 @@ def choice(tmp):
             # protocol.brutforce()
             class_brut.Brutforce().brut_password()
         case 19:
-            pass
+            protocol.read_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE)
         case 20:
             protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE)
         case 0:

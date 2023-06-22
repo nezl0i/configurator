@@ -24,6 +24,8 @@ class ICommand:
     LAST_PROFILE = ['08 13']
     WRITE_BANK_1 = ['07 03']
     WRITE_BANK_2 = ['07 04']
+    READ_BANK_1 = ['06 03']
+    READ_BANK_2 = ['06 83']
 
     @staticmethod
     def set_id(new_id):

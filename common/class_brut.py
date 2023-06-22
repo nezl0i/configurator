@@ -1,6 +1,7 @@
 import os
 import sys
 import socket
+from datetime import datetime
 from time import sleep
 from sys import platform
 from config import config as cfg
@@ -85,14 +86,16 @@ class Brutforce(UartSerialPort):
             self.s.send(transfer)
             buffer = self.s.recv(4)
         else:
-            # self.set_timeout(1)
+            if self.mode == 1:
+                self.set_timeout(1)
             self.sp.write(transfer)
             buffer = self.sp.read(4)
 
         while buffer:
+            current_time = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
             print(f"Ответ от устройства >> {buffer.hex(' ', -1)}\n")
             print(f'Пароль найден - {input_pass}')
-            with open('log/password/password.txt', 'w') as f:
+            with open(f'log/password/passwd_{current_time}.txt', 'w') as f:
                 f.write(input_pass)
             self.bar.finish()
             return True

@@ -503,6 +503,10 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
     def write_profile(self, command: List[str], impulse: str) -> None:
         """Запись профиля мощности"""
+        if impulse is None:
+            print("Не авторизован.")
+            return
+
         tariff_time = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30',
                        '04:00', '04:30', '05:00', '05:30', '06:00', '06:30', '07:00', '23:30']
 
@@ -512,7 +516,6 @@ class IncotexProtocol(AbstractIncotexProtocol):
         if out is None:
             return
 
-        folder_count = 0
         answer = out[1]
         state = answer[3]  # байт состояния
 
@@ -530,13 +533,19 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
         # Обработка файла профиля
         folder = Path("profile")
+        file_name = ""
 
-        if folder.is_dir():
-            folder_count = len([1 for _ in folder.iterdir()])
+        if folder.exists() and folder.is_dir():
+            folder_count = [_ for _ in folder.iterdir()]
+            if len(folder_count) > 1:
+                print("В папке более 1 файла!")
+            else:
+                file_name = folder_count[0]
+        else:
+            print("Не найдена папка с профилем!")
+            return
 
-        print(f"В папке {folder} {folder_count} объектов")
-
-        demo = pd.read_excel(f'{folder}/test.xlsx', sheet_name='30 мин', skiprows=7, keep_default_na=False).to_dict(
+        demo = pd.read_excel(f'{file_name}', sheet_name='30 мин', skiprows=7, keep_default_na=False).to_dict(
             'list')
 
         result_json = [val for val in demo.values()]
@@ -544,6 +553,8 @@ class IncotexProtocol(AbstractIncotexProtocol):
         tmp = list(zip(*result_json))
         tmp.pop(-1)
 
+        print(f"Файл \"{file_name}\" обработан.")
+        print(f"Количество срезов для записи {len(tmp)}")
         # Начальная дата для записи профиля из файла
         to_first_date = tmp[0][0].split('.')
 
@@ -553,11 +564,8 @@ class IncotexProtocol(AbstractIncotexProtocol):
         # Дата и время начала периода записи профиля мощности
         first_time = datetime.strptime(f"{to_first_date[2]}-{to_first_date[1]}-{to_first_date[0]} 00:00:00",
                                        '%Y-%m-%d %H:%M:%S')
-        if answer[1].startswith('0'):
-            offset = f"{''.join(answer[1:3])}"  # адрес последней записи массива средних мощностей
-        else:
-            offset = f"{''.join(answer[1:3])}"
 
+        offset = f"{''.join(answer[1:3])}"  # адрес последней записи массива средних мощностей
         int_offset = int(offset, 16)
 
         # seconds = (last_time - first_time).total_seconds()
@@ -565,8 +573,8 @@ class IncotexProtocol(AbstractIncotexProtocol):
         # hours = int((last_time - first_time).total_seconds() / 1800)  # Количество получасовок в выбранном периоде
 
         slices = int(minutes // 30)  # Количество срезов
-        print(f'Количество срезов {slices}')
-        print(f"Последняя запись по адресу 0x{offset} ({int_offset})")
+        print(f'Количество срезов от текущей позиции {slices}')
+        print(f"Последняя запись по адресу 0x{offset}")
 
         if int_offset >= slices:
             tmp_slices = int_offset - slices
@@ -576,9 +584,9 @@ class IncotexProtocol(AbstractIncotexProtocol):
         address = (tmp_slices + 1) * 16
 
         tmp_offset = format(address, '04x')
-        current_offset = f'{tmp_offset[:2]} {tmp_offset[2:]}'
+        current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
 
-        print(f"Старт записи с адреса {tmp_offset}")
+        print(f"Старт записи с адреса 0x{current_offset.replace(' ', '')}")
 
         ready = input('Продолжить? (y/n): ')
         to_answer = ('y', 'yes', 'д', 'да')
@@ -615,7 +623,134 @@ class IncotexProtocol(AbstractIncotexProtocol):
                 flag_array = flag_array ^ 1
 
             tmp_offset = format(int_offset, '04x')
-            current_offset = f'{tmp_offset[:2]} {tmp_offset[2:]}'
+            current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
+
+    def read_profile(self, command: List[str], impulse: str) -> None:
+        """ Чтение профиля мощности"""
+
+        if impulse is None:
+            print("Не авторизован.")
+            return
+
+        cmd = ICommand()
+        out = self.exchange(command, 12)
+        result = []
+        profile_full_list = []
+
+        if out is None:
+            return
+
+        answer = out[1]
+        state = answer[3]  # байт состояния
+
+        if state == '00':
+            print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
+            return
+
+        status_byte = format(int(state, 16), "08b")
+        flag_array = int(status_byte[7])  # Флаг переполнения массива (0-нет, 1 да)
+
+        first_date = input("Начало интервала (YYYY-MM-DD): ")
+        last_date = input("Конец интервала (YYYY-MM-DD): ")
+
+        # Дата и время начала периода профиля мощности
+        first_time = datetime.strptime(f"{first_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
+        # Дата и время конца периода профиля мощности
+        last_time = datetime.strptime(f'{last_date} 00:00:00', '%Y-%m-%d %H:%M:%S')
+        # Дата и время последней записи массива средних мощностей
+        current_time = datetime.strptime(f'20{answer[8]}-{answer[7]}-{answer[6]} {answer[4]}:{answer[5]}:00',
+                                         '%Y-%m-%d %H:%M:%S')
+
+        offset = f"{''.join(answer[1:3])}"  # адрес последней записи массива средних мощностей
+        int_offset = int(offset, 16)
+
+        minutes = (last_time - first_time).total_seconds() / 60
+        current_minutes = (current_time - first_time).total_seconds() / 60
+
+        current_slices = int(current_minutes // 30)  # Количество срезов от последней записи
+        slices = int(minutes // 30)  # Количество срезов
+
+        print(f'Количество срезов {slices}')
+        print(f"Последняя запись по адресу 0x{offset}")
+
+        if int_offset >= current_slices:
+            tmp_slices = int_offset - current_slices
+        else:
+            tmp_slices = 8192 - current_slices + int_offset
+
+        address = (tmp_slices + 1) * 16
+
+        tmp_offset = format(address, '04x')
+        current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
+
+        print(f"Старт чтения с адреса 0x{current_offset.replace(' ', '')}")
+
+        ready = input('Продолжить? (y/n): ')
+        to_answer = ('y', 'yes', 'д', 'да')
+
+        if ready not in to_answer:
+            sys.exit()
+
+        for _ in range(slices):
+
+            if flag_array == 0:
+                cmd_command = cmd.READ_BANK_2
+            else:
+                state = str(int(state) + 1).zfill(2)
+                cmd_command = cmd.READ_BANK_1
+
+            send = f"{current_offset} 1E"
+
+            out = self.exchange(cmd_command, 33, param=send)[1]
+            result.append(out[2:31])
+
+            # check_response(self.write_profile.__doc__, out)
+
+            int_offset = int(tmp_offset, 16) + 16
+            if int_offset == 65536 or int_offset == 131071:
+                int_offset = 0
+                flag_array = flag_array ^ 1
+
+            tmp_offset = format(int_offset, '04x')
+            current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
+
+        len_result = len(result)
+        print("Формируем отчет...")
+
+        for i, prof in enumerate(result):
+
+            if i == len_result - 1:
+                break
+            if i == 0:
+                period_1 = self.create_profile_data(prof, impulse, 0)
+                profile_full_list.append(period_1)
+
+            period_2 = self.create_profile_data(prof, impulse, 15)
+            profile_full_list.append(period_2)
+
+        profile = list(zip(*profile_full_list))
+        current_time = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
+        file_name = f'profile_{current_time}.xlsx'
+
+        df = pd.DataFrame({'Дата': profile[1], 'Время': profile[0], 'A+, кВт': profile[2]})
+        df.to_excel(f'report/{file_name}', sheet_name='30 мин', index=False)
+        print(f'Отчет {file_name} сформирован.')
+
+    @staticmethod
+    def create_profile_data(result_list: list, impulse: str, offset: int) -> list:
+        profile_time = f'{result_list[0 + offset]}:{result_list[1 + offset]}'
+        profile_date = f'{result_list[2 + offset]}.{result_list[3 + offset]}.20{result_list[4 + offset]}'
+        profile_active_plus = float(
+            '{:.4f}'.format(int(f'{result_list[7 + offset]}{result_list[6 + offset]}', 16) / int(impulse)))
+        profile_active_minus = float(
+            '{:.4f}'.format(int(f'{result_list[9 + offset]}{result_list[8 + offset]}', 16) / int(impulse)))
+        profile_reactive_plus = float(
+            '{:.4f}'.format(int(f'{result_list[11 + offset]}{result_list[10 + offset]}', 16) / int(impulse)))
+        profile_reactive_minus = float(
+            '{:.4f}'.format(int(f'{result_list[13 + offset]}{result_list[12 + offset]}', 16) / int(impulse)))
+
+        return [profile_time, profile_date, profile_active_plus, profile_active_minus, profile_reactive_plus,
+                profile_reactive_minus]
 
 
 protocol = IncotexProtocol()
