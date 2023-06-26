@@ -1,10 +1,10 @@
 import sys
+from common.logo import c
 from core.protocol import protocol
 from core.build_device import director, device
 from common.enum_command import ICommand
-from common.logo import c
 from common.menu import menu, event_menu
-from common import class_brut
+from common.class_brut import Brutforce
 
 command = ICommand()
 
@@ -69,10 +69,9 @@ def choice(tmp):
         case 17:
             protocol.set_spodes(command.SET_SPODES)
         case 18:
-            # protocol.brutforce()
-            class_brut.Brutforce().brut_password()
+            Brutforce().brut_password()
         case 19:
-            protocol.read_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE)
+            protocol.read_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE, device.IA.DEVICE_SERIAL_NUMBER)
         case 20:
             protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE)
         case 0:

@@ -73,7 +73,8 @@ class ConnectDevice(AbstractConnectDevice):
 
     def _get_execution(self):
         variant_execution = protocol.get_execution(self.command.GET_EXECUTION)
-        self.IA.DEVICE_VERSION, self.IA.DEVICE_REVISION, self.IA.DEVICE_CRC, self.IA.DEVICE_IMPULSE = variant_execution
+        self.IA.DEVICE_VERSION, self.IA.DEVICE_REVISION, self.IA.DEVICE_CRC, self.IA.DEVICE_IMPULSE, \
+            self.IA.DEVICE_SERIAL_NUMBER = variant_execution
 
 
 device = ConnectDevice()

@@ -1,12 +1,11 @@
 import os
 import sys
-import socket
 from datetime import datetime
 from time import sleep
 from sys import platform
 from config import config as cfg
 from common.modbus_crc16 import crc16
-from common.uart import UartSerialPort
+from core.build_channel import ExchangeProtocol
 
 try:
     from progress.bar import IncrementalBar
@@ -17,8 +16,10 @@ except ImportError:
         os.system('python3 -m pip install progress')
     from progress.bar import IncrementalBar
 
+EP = ExchangeProtocol()
 
-class Brutforce(UartSerialPort):
+
+class Brutforce:
     def __init__(self):
         super().__init__()
 
@@ -28,28 +29,23 @@ class Brutforce(UartSerialPort):
         self.stop_passwd = cfg.STOP_PASSWORD
         self.pass_mode = cfg.DEVICE_PASSWORD_MODE
 
-        self.mode = cfg.CONNECT_MODE
-
-        self.s = None
-        self.TCP_HOST = cfg.TCP_HOST
-        self.TCP_PORT = cfg.TCP_PORT
-        self.TCP_TIMEOUT = cfg.TCP_TIMEOUT
         self.flag = False
 
         self.bar = IncrementalBar('Выполнение', max=self.stop_passwd - self.start_passwd)
         self._check_test()
 
-    def __test(self, pk):
+    @staticmethod
+    def __test(pk):
         test = f'{pk} 00 '
         transfer = bytearray.fromhex(test + crc16(bytearray.fromhex(test)))
         sys.stdout.write(f'Тест канала связи ...\r')
-        if self.mode == 2:
-            self.s.send(transfer)
-            buffer = self.s.recv(4)
+        if EP.mode == 2:
+            EP.s.send(transfer)
+            buffer = EP.s.recv(4)
         else:
-            self.set_timeout(self.timeout)
-            self.sp.write(transfer)
-            buffer = self.sp.read(4)
+            EP.set_timeout(EP.timeout)
+            EP.sp.write(transfer)
+            buffer = EP.sp.read(4)
         while buffer:
             sys.stdout.write(f'Тест канала связи - ОК.\n')
             print('-' * 28)
@@ -64,32 +60,22 @@ class Brutforce(UartSerialPort):
             print('Нет ответа от устройства')
             sys.exit()
 
-    def socket_connect(self):
-        self.flag = False
-        try:
-            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print('Socket successfully created')
-            self.s.connect((self.TCP_HOST, self.TCP_PORT))
-            self.s.settimeout(self.TCP_TIMEOUT)
-            print(f'Connected to {self.TCP_HOST}:{self.TCP_PORT}\n')
-            self._check_test()
-        except socket.error as err:
-            print(err)
-            sys.exit()
-
     def reading(self, pk, input_pass=None):
         test = f'{pk} 01 02 {input_pass} '
         transfer = bytearray.fromhex(test + crc16(bytearray.fromhex(test)))
         sys.stdout.write(f' [Пробуем пароль - {input_pass}]\r')
         self.bar.next()
-        if self.mode == 2:
-            self.s.send(transfer)
-            buffer = self.s.recv(4)
+        if EP.mode == 2:
+            EP.s.send(transfer)
+            try:
+                buffer = EP.s.recv(4)
+            except TimeoutError:
+                return False
         else:
-            if self.mode == 1:
-                self.set_timeout(1)
-            self.sp.write(transfer)
-            buffer = self.sp.read(4)
+            if EP.mode == 1:
+                EP.set_timeout(1)
+            EP.sp.write(transfer)
+            buffer = EP.sp.read(4)
 
         while buffer:
             current_time = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')

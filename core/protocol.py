@@ -1,15 +1,15 @@
 import re
 import sys
 import json
-from typing import List
 import pandas as pd
+from typing import List
+from pathlib import Path
 from common import meters
 from common.colors import c
 from datetime import datetime
-from pathlib import Path
 from decorators.status import is_status
-from common import execute, hardware, parse_event
 from common.enum_command import ICommand
+from common import execute, hardware, parse_event
 from core.abstract_protocol import AbstractIncotexProtocol
 from common.check_response import check_response, check_out
 
@@ -95,7 +95,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
         execute.print_exec(device_serial_number, data, version, revision, crc_po, byte_1, byte_2,
                            byte_3, byte_4, byte_5, byte_6, byte_7)
 
-        return version, make_revision, crc_po, device_impulse
+        return version, make_revision, crc_po, device_impulse, device_serial_number
 
     @is_status
     def get_descriptor(self, command: List[str]) -> None:
@@ -501,16 +501,12 @@ class IncotexProtocol(AbstractIncotexProtocol):
         tmp_hex = format(int(tmp_obj), '04x')
         return f'{tmp_hex[2:]} {tmp_hex[:2]}'
 
-    def write_profile(self, command: List[str], impulse: str) -> None:
-        """Запись профиля мощности"""
+    def get_last_profile(self, command: List[str], impulse: str):
+
         if impulse is None:
             print("Не авторизован.")
             return
 
-        tariff_time = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30',
-                       '04:00', '04:30', '05:00', '05:30', '06:00', '06:30', '07:00', '23:30']
-
-        cmd = ICommand()
         out = self.exchange(command, 12)
 
         if out is None:
@@ -519,10 +515,6 @@ class IncotexProtocol(AbstractIncotexProtocol):
         answer = out[1]
         state = answer[3]  # байт состояния
 
-        if state == '00':
-            print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
-            return
-
         status_byte = format(int(state, 16), "08b")
         # tariff = status_byte[1:3]  # Признак действующего тарифа (00-тариф 1, 01-тариф 2, 02-тариф 3, 03-тариф 4)
         # check_profile = status_byte[3]  # Признак профиля (0-основной, 1-дополнительный)
@@ -530,6 +522,23 @@ class IncotexProtocol(AbstractIncotexProtocol):
         # flag_init = status_byte[5]  # Флаг выполнения инициализации памяти (0-нет, 1-да)
         # flag_season = status_byte[6]  # Флаг неполного среза (0-нет, 1-да)
         flag_array = int(status_byte[7])  # Флаг переполнения массива (0-нет, 1 да)
+
+        return answer, flag_array
+
+    @is_status
+    def write_profile(self, command: List[str], impulse: str) -> None:
+        """Запись профиля мощности"""
+
+        answer, flag_array = self.get_last_profile(command, impulse)
+
+        if answer[3] == '00':
+            print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
+            return
+
+        tariff_time = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30',
+                       '04:00', '04:30', '05:00', '05:30', '06:00', '06:30', '07:00', '23:30']
+
+        cmd = ICommand()
 
         # Обработка файла профиля
         folder = Path("profile")
@@ -569,8 +578,8 @@ class IncotexProtocol(AbstractIncotexProtocol):
         int_offset = int(offset, 16)
 
         # seconds = (last_time - first_time).total_seconds()
-        minutes = (last_time - first_time).total_seconds() / 60
         # hours = int((last_time - first_time).total_seconds() / 1800)  # Количество получасовок в выбранном периоде
+        minutes = (last_time - first_time).total_seconds() / 60
 
         slices = int(minutes // 30)  # Количество срезов
         print(f'Количество срезов от текущей позиции {slices}')
@@ -607,10 +616,10 @@ class IncotexProtocol(AbstractIncotexProtocol):
             energy = self.to_fixed(tmp_energy)
 
             if flag_array == 0:
-                cmd_command = cmd.WRITE_BANK_2
+                cmd_command = cmd.WRITE_BANK_1
             else:
                 state = str(int(state) + 1).zfill(2)
-                cmd_command = cmd.WRITE_BANK_1
+                cmd_command = cmd.WRITE_BANK_2
 
             send = f"{current_offset} 0F {state} {time} {date} 1E {energy} 00 00 00 00 00 00"
 
@@ -625,30 +634,19 @@ class IncotexProtocol(AbstractIncotexProtocol):
             tmp_offset = format(int_offset, '04x')
             current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
 
-    def read_profile(self, command: List[str], impulse: str) -> None:
+    @is_status
+    def read_profile(self, command: List[str], impulse: str, serial: str) -> None:
         """ Чтение профиля мощности"""
 
-        if impulse is None:
-            print("Не авторизован.")
-            return
+        answer, flag_array = self.get_last_profile(command, impulse)
 
-        cmd = ICommand()
-        out = self.exchange(command, 12)
-        result = []
-        profile_full_list = []
-
-        if out is None:
-            return
-
-        answer = out[1]
-        state = answer[3]  # байт состояния
-
-        if state == '00':
+        if answer[3] == '00':
             print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
             return
 
-        status_byte = format(int(state, 16), "08b")
-        flag_array = int(status_byte[7])  # Флаг переполнения массива (0-нет, 1 да)
+        cmd = ICommand()
+        result = []
+        profile_full_list = []
 
         first_date = input("Начало интервала (YYYY-MM-DD): ")
         last_date = input("Конец интервала (YYYY-MM-DD): ")
@@ -694,10 +692,9 @@ class IncotexProtocol(AbstractIncotexProtocol):
         for _ in range(slices):
 
             if flag_array == 0:
-                cmd_command = cmd.READ_BANK_2
-            else:
-                state = str(int(state) + 1).zfill(2)
                 cmd_command = cmd.READ_BANK_1
+            else:
+                cmd_command = cmd.READ_BANK_2
 
             send = f"{current_offset} 1E"
 
@@ -730,7 +727,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
         profile = list(zip(*profile_full_list))
         current_time = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
-        file_name = f'profile_{current_time}.xlsx'
+        file_name = f'{serial}_profile_{current_time}.xlsx'
 
         df = pd.DataFrame({'Дата': profile[1], 'Время': profile[0], 'A+, кВт': profile[2]})
         df.to_excel(f'report/{file_name}', sheet_name='30 мин', index=False)
