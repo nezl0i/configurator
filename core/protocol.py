@@ -1,3 +1,4 @@
+import math
 import re
 import sys
 import json
@@ -496,6 +497,11 @@ class IncotexProtocol(AbstractIncotexProtocol):
               f'Выполнение - {check_out(out[1])}{c.END}\n')
 
     @staticmethod
+    def round_up(n, decimals=0):
+        multiplier = 10 ** decimals
+        return math.ceil(n * multiplier) / multiplier
+
+    @staticmethod
     def to_fixed(float_obj):
         tmp_obj = float_obj.replace('.', '')
         tmp_hex = format(int(tmp_obj), '04x')
@@ -518,6 +524,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
         status_byte = format(int(state, 16), "08b")
         # tariff = status_byte[1:3]  # Признак действующего тарифа (00-тариф 1, 01-тариф 2, 02-тариф 3, 03-тариф 4)
         # check_profile = status_byte[3]  # Признак профиля (0-основной, 1-дополнительный)
+        # print("Основной" if check_profile == "0" else "Дополнительный")
         # check_time = status_byte[4]  # Признак сезонного времени (0-лето, 1-зима)
         # flag_init = status_byte[5]  # Флаг выполнения инициализации памяти (0-нет, 1-да)
         # flag_season = status_byte[6]  # Флаг неполного среза (0-нет, 1-да)
@@ -542,12 +549,12 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
         # Обработка файла профиля
         folder = Path("profile")
-        file_name = ""
 
         if folder.exists() and folder.is_dir():
             folder_count = [_ for _ in folder.iterdir()]
             if len(folder_count) > 1:
                 print("В папке более 1 файла!")
+                return
             else:
                 file_name = folder_count[0]
         else:
@@ -566,13 +573,15 @@ class IncotexProtocol(AbstractIncotexProtocol):
         print(f"Количество срезов для записи {len(tmp)}")
         # Начальная дата для записи профиля из файла
         to_first_date = tmp[0][0].split('.')
+        to_first_time = tmp[0][1].split(':')
 
         # Дата и время последней записи массива средних мощностей
         last_time = datetime.strptime(f'20{answer[8]}-{answer[7]}-{answer[6]} {answer[4]}:{answer[5]}:00',
                                       '%Y-%m-%d %H:%M:%S')
         # Дата и время начала периода записи профиля мощности
-        first_time = datetime.strptime(f"{to_first_date[2]}-{to_first_date[1]}-{to_first_date[0]} 00:00:00",
-                                       '%Y-%m-%d %H:%M:%S')
+        first_time = datetime.strptime(
+            f"{to_first_date[2]}-{to_first_date[1]}-{to_first_date[0]} {to_first_time[0]}:{to_first_time[1]}:00",
+            '%Y-%m-%d %H:%M:%S')
 
         offset = f"{''.join(answer[1:3])}"  # адрес последней записи массива средних мощностей
         int_offset = int(offset, 16)
@@ -585,12 +594,16 @@ class IncotexProtocol(AbstractIncotexProtocol):
         print(f'Количество срезов от текущей позиции {slices}')
         print(f"Последняя запись по адресу 0x{offset}")
 
+        # TODO: изменить flag_array, если есть переход в адресе
         if int_offset >= slices:
             tmp_slices = int_offset - slices
         else:
             tmp_slices = 8192 - slices + int_offset
 
-        address = (tmp_slices + 1) * 16
+        address = tmp_slices * 16
+
+        if address >= 10000:
+            flag_array = 1
 
         tmp_offset = format(address, '04x')
         current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
@@ -612,8 +625,31 @@ class IncotexProtocol(AbstractIncotexProtocol):
             if i[1] in tariff_time:
                 state = '28'
 
-            tmp_energy = f"{i[2] * int(impulse) / 10000:.{4}f}"
-            energy = self.to_fixed(tmp_energy)
+            try:
+                tmp_energy = f"{i[2] * int(impulse) / 10000:.{4}f}"  # A+
+                # tmp_energy = str(self.round_up(i[2] * int(impulse) / 10000, 4))   # A+
+                energy = self.to_fixed(tmp_energy)
+            except IndexError:
+                print("Нет данных в файле профиля.")
+                return
+            try:
+                tmp_energy2 = f"{i[3] * int(impulse) / 10000:.{4}f}"  # R+
+                # tmp_energy2 = str(self.round_up(i[3] * int(impulse) / 10000, 4))
+                energy2 = self.to_fixed(tmp_energy2)  # R+
+            except IndexError:
+                energy2 = '00 00'
+            try:
+                tmp_energy3 = f"{i[4] * int(impulse) / 10000:.{4}f}"  # A-
+                # tmp_energy3 = str(self.round_up(i[4] * int(impulse) / 10000, 4))
+                energy3 = self.to_fixed(tmp_energy3)  # A-
+            except IndexError:
+                energy3 = '00 00'
+            try:
+                tmp_energy4 = f"{i[5] * int(impulse) / 10000:.{4}f}"  # R-
+                # tmp_energy4 = str(self.round_up(i[5] * int(impulse) / 10000, 4))
+                energy4 = self.to_fixed(tmp_energy4)  # R-
+            except IndexError:
+                energy4 = '00 00'
 
             if flag_array == 0:
                 cmd_command = cmd.WRITE_BANK_1
@@ -621,7 +657,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
                 state = str(int(state) + 1).zfill(2)
                 cmd_command = cmd.WRITE_BANK_2
 
-            send = f"{current_offset} 0F {state} {time} {date} 1E {energy} 00 00 00 00 00 00"
+            send = f"{current_offset} 0F {state} {time} {date} 1E {energy} {energy3} {energy2} {energy4}"
 
             out = self.exchange(cmd_command, 4, param=send)[1]
             check_response(self.write_profile.__doc__, out)
@@ -633,6 +669,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
             tmp_offset = format(int_offset, '04x')
             current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
+        return
 
     @is_status
     def read_profile(self, command: List[str], impulse: str, serial: str) -> None:
@@ -677,6 +714,9 @@ class IncotexProtocol(AbstractIncotexProtocol):
             tmp_slices = 8192 - current_slices + int_offset
 
         address = (tmp_slices + 1) * 16
+
+        if address >= 10000:
+            flag_array = 1
 
         tmp_offset = format(address, '04x')
         current_offset = f'{tmp_offset[-4:-2]} {tmp_offset[-2:]}'
@@ -729,7 +769,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
         current_time = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
         file_name = f'{serial}_profile_{current_time}.xlsx'
 
-        df = pd.DataFrame({'Дата': profile[1], 'Время': profile[0], 'A+, кВт': profile[2]})
+        df = pd.DataFrame({'Дата': profile[1], 'Время': profile[0], 'A+, кВт': profile[2], 'R+, кВт': profile[4]})
         df.to_excel(f'report/{file_name}', sheet_name='30 мин', index=False)
         print(f'Отчет {file_name} сформирован.')
 
