@@ -503,7 +503,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
     @staticmethod
     def to_fixed(float_obj):
-        tmp_obj = float_obj.replace('.', '')
+        tmp_obj = float_obj.replace('0.', '')
         tmp_hex = format(int(tmp_obj), '04x')
         return f'{tmp_hex[2:]} {tmp_hex[:2]}'
 
@@ -533,14 +533,15 @@ class IncotexProtocol(AbstractIncotexProtocol):
         return answer, flag_array
 
     @is_status
-    def write_profile(self, command: List[str], impulse: str) -> None:
+    def write_profile(self, command: List[str], impulse: str, revision: str, sheet: str) -> None:
         """Запись профиля мощности"""
 
         answer, flag_array = self.get_last_profile(command, impulse)
+        koeff = {'00': 10, '01': 1, '02': 2, '03': 2}
 
-        if answer[3] == '00':
-            print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
-            return
+        # if answer[3] == '00':
+        #     print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
+        #     return
 
         tariff_time = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30',
                        '04:00', '04:30', '05:00', '05:30', '06:00', '06:30', '07:00', '23:30']
@@ -552,16 +553,22 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
         if folder.exists() and folder.is_dir():
             folder_count = [_ for _ in folder.iterdir()]
-            if len(folder_count) > 1:
-                print("В папке более 1 файла!")
+
+            for i in range(len(folder_count)):
+                print(f'[{i}] - {folder_count[i]}')
+
+            try:
+                choice_file = int(input('Какой файл загружать?: '))
+            except (Exception,):
+                print('Что-то пошло не так ...')
                 return
-            else:
-                file_name = folder_count[0]
+
+            file_name = folder_count[choice_file]
         else:
             print("Не найдена папка с профилем!")
             return
 
-        demo = pd.read_excel(f'{file_name}', sheet_name='30 мин', skiprows=7, keep_default_na=False).to_dict(
+        demo = pd.read_excel(f'{file_name}', sheet_name=sheet, skiprows=7, keep_default_na=False).to_dict(
             'list')
 
         result_json = [val for val in demo.values()]
@@ -594,7 +601,6 @@ class IncotexProtocol(AbstractIncotexProtocol):
         print(f'Количество срезов от текущей позиции {slices}')
         print(f"Последняя запись по адресу 0x{offset}")
 
-        # TODO: изменить flag_array, если есть переход в адресе
         if int_offset >= slices:
             tmp_slices = int_offset - slices
         else:
@@ -626,6 +632,16 @@ class IncotexProtocol(AbstractIncotexProtocol):
                 state = '28'
 
             try:
+                # if revision == '03' or revision == '00':
+                #     tmp_i = (i[2] * 1000) * koeff[revision]
+                # else:
+                #     tmp_i = i[2] * 1000 / koeff[revision]
+                #
+                # tmp_i = '{:04X}'.format(int(tmp_i))
+                # b = re.findall(r'\w\w', tmp_i)
+                # b[0], b[1], = b[1], b[0]
+                # energy = f"{' '.join(b)} "
+
                 tmp_energy = f"{i[2] * int(impulse) / 10000:.{4}f}"  # A+
                 # tmp_energy = str(self.round_up(i[2] * int(impulse) / 10000, 4))   # A+
                 energy = self.to_fixed(tmp_energy)

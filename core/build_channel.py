@@ -4,6 +4,7 @@ from typing import List
 from common.colors import c
 from datetime import datetime
 from config import config as cfg
+from common.logger import LOGGER
 from common.modbus_crc16 import crc16
 from common.uart import UartSerialPort
 from decorators.singleton import singleton
@@ -103,6 +104,7 @@ class ExchangeProtocol(UartSerialPort):
 
         if debug:
             print(f'[{current_time}] :{c.BLUE} >>', print_line, c.END)
+            LOGGER.info(f'>> {print_line}')
 
         if self.mode != 2:
             self.sp.write(transfer)

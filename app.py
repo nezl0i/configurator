@@ -5,6 +5,7 @@ from core.build_device import director, device
 from common.enum_command import ICommand
 from common.menu import menu, event_menu
 from common.class_brut import Brutforce
+from config import config as cfg
 
 command = ICommand()
 
@@ -73,7 +74,7 @@ def choice(tmp):
         case 19:
             protocol.read_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE, device.IA.DEVICE_SERIAL_NUMBER)
         case 20:
-            protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE)
+            protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE, device.IA.DEVICE_REVISION, cfg.SHEET_NAME)
         case 0:
             sys.exit()
 

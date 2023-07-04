@@ -1,6 +1,7 @@
 import sys
 from config import config as cfg
 from datetime import datetime
+from common.logger import LOGGER
 from common.colors import c
 from functools import wraps
 
@@ -17,6 +18,7 @@ class Repeat:
                 if check:
                     if cfg.DEBUG:
                         print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+                        LOGGER.info(f'<< {" ".join(buffer)}')
                     else:
                         sys.stdout.write('Идет обмен данными ...\r')
                     sys.stdout.flush()
@@ -25,7 +27,9 @@ class Repeat:
                     if buffer and len(buffer) != 0:
                         if cfg.DEBUG:
                             print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+                            LOGGER.info(f'<< {" ".join(buffer)}')
             print(f'{c.WARNING}Нет ответа от устройства.{c.END}')
+            LOGGER.info(f'Нет ответа от устройства.')
             sys.exit()
         return inner
 
@@ -45,6 +49,7 @@ def repeat(_func=None, *, count=None):
                 if check:
                     if cfg.DEBUG:
                         print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+                        LOGGER.info(f'<< {" ".join(buffer)}')
                     else:
                         sys.stdout.write('Идет обмен данными ...\r')
                     sys.stdout.flush()
@@ -53,7 +58,9 @@ def repeat(_func=None, *, count=None):
                     if buffer and len(buffer) != 0:
                         if cfg.DEBUG:
                             print(f'[{current_time}] :{c.FAIL} <<', ' '.join(buffer), c.END)
+                            LOGGER.info(f'<< {" ".join(buffer)}')
             print(f'{c.WARNING}Нет ответа от устройства.{c.END}')
+            LOGGER.info(f'Нет ответа от устройства.')
             sys.exit()
         return inner
     if _func is None:
