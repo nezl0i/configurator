@@ -5,6 +5,7 @@ import json
 import pandas as pd
 from typing import List
 from pathlib import Path
+from config import config as cfg
 from common import meters
 from common.colors import c
 from datetime import datetime
@@ -413,7 +414,13 @@ class IncotexProtocol(AbstractIncotexProtocol):
                 return
             else:
                 send_command = f'{arg_value} {hi_address} {lo_address} {line.rstrip()}'
-                self.exchange(command, 4, param=send_command)
+                out = self.exchange(command, 4, param=send_command)
+                try:
+                    if out[1][1] != '00':
+                        print('Что-то пошло не так...')
+                        return
+                except (IndexError,):
+                    pass
                 if lo_address == 'FF':
                     hi_address = format(int(hi_address, 16) + 1, "02X")
                     lo_address = '00'
@@ -530,18 +537,20 @@ class IncotexProtocol(AbstractIncotexProtocol):
         # flag_season = status_byte[6]  # Флаг неполного среза (0-нет, 1-да)
         flag_array = int(status_byte[7])  # Флаг переполнения массива (0-нет, 1 да)
 
-        return answer, flag_array
+        return status_byte, answer, flag_array
 
     @is_status
     def write_profile(self, command: List[str], impulse: str, revision: str, sheet: str) -> None:
         """Запись профиля мощности"""
 
-        answer, flag_array = self.get_last_profile(command, impulse)
-        koeff = {'00': 10, '01': 1, '02': 2, '03': 2}
+        status_byte, answer, flag_array = self.get_last_profile(command, impulse)
 
-        # if answer[3] == '00':
-        #     print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
-        #     return
+        # check_profile = status_byte[3]
+        # koeff = {'00': 10, '01': 1, '02': 2, '03': 2}
+
+        if answer[3] == '00':
+            print(f'{c.FAIL}Дождитесь первого среза.{c.END}')
+            return
 
         tariff_time = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30',
                        '04:00', '04:30', '05:00', '05:30', '06:00', '06:30', '07:00', '23:30']
@@ -555,7 +564,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
             folder_count = [_ for _ in folder.iterdir()]
 
             for i in range(len(folder_count)):
-                print(f'[{i}] - {folder_count[i]}')
+                print(f'[{i}] - {folder_count[i].name}')
 
             try:
                 choice_file = int(input('Какой файл загружать?: '))
@@ -568,9 +577,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
             print("Не найдена папка с профилем!")
             return
 
-        demo = pd.read_excel(f'{file_name}', sheet_name=sheet, skiprows=7, keep_default_na=False).to_dict(
-            'list')
-
+        demo = pd.read_excel(f'{file_name}', sheet_name=sheet, skiprows=7, keep_default_na=False).to_dict('list')
         result_json = [val for val in demo.values()]
 
         tmp = list(zip(*result_json))
@@ -578,6 +585,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
         print(f"Файл \"{file_name}\" обработан.")
         print(f"Количество срезов для записи {len(tmp)}")
+
         # Начальная дата для записи профиля из файла
         to_first_date = tmp[0][0].split('.')
         to_first_time = tmp[0][1].split(':')
@@ -589,7 +597,6 @@ class IncotexProtocol(AbstractIncotexProtocol):
         first_time = datetime.strptime(
             f"{to_first_date[2]}-{to_first_date[1]}-{to_first_date[0]} {to_first_time[0]}:{to_first_time[1]}:00",
             '%Y-%m-%d %H:%M:%S')
-
         offset = f"{''.join(answer[1:3])}"  # адрес последней записи массива средних мощностей
         int_offset = int(offset, 16)
 
@@ -622,14 +629,15 @@ class IncotexProtocol(AbstractIncotexProtocol):
         if ready not in to_answer:
             sys.exit()
 
-        for i in tmp:
-            state = '08'
+        for i, note in enumerate(tmp, 1):
 
-            date = i[0].replace('.', ' ').replace('202', '2')
-            time = i[1].replace(':', ' ')
+            state = '08' if flag_array == 0 else '09'
 
-            if i[1] in tariff_time:
-                state = '28'
+            date = note[0].replace('.', ' ').replace('202', '2')
+            time = note[1].replace(':', ' ')
+
+            if note[1] in tariff_time:
+                state = '28' if flag_array == 0 else '29'
 
             try:
                 # if revision == '03' or revision == '00':
@@ -642,44 +650,46 @@ class IncotexProtocol(AbstractIncotexProtocol):
                 # b[0], b[1], = b[1], b[0]
                 # energy = f"{' '.join(b)} "
 
-                tmp_energy = f"{i[2] * int(impulse) / 10000:.{4}f}"  # A+
+                tmp_energy = f"{note[2] * int(impulse) / 10000:.{4}f}"  # A+
                 # tmp_energy = str(self.round_up(i[2] * int(impulse) / 10000, 4))   # A+
                 energy = self.to_fixed(tmp_energy)
-            except IndexError:
+            except (IndexError, TypeError):
                 print("Нет данных в файле профиля.")
                 return
             try:
-                tmp_energy2 = f"{i[3] * int(impulse) / 10000:.{4}f}"  # R+
+                tmp_energy2 = f"{note[3] * int(impulse) / 10000:.{4}f}"  # R+
                 # tmp_energy2 = str(self.round_up(i[3] * int(impulse) / 10000, 4))
                 energy2 = self.to_fixed(tmp_energy2)  # R+
-            except IndexError:
+            except (IndexError, TypeError):
                 energy2 = '00 00'
             try:
-                tmp_energy3 = f"{i[4] * int(impulse) / 10000:.{4}f}"  # A-
+                tmp_energy3 = f"{note[4] * int(impulse) / 10000:.{4}f}"  # A-
                 # tmp_energy3 = str(self.round_up(i[4] * int(impulse) / 10000, 4))
                 energy3 = self.to_fixed(tmp_energy3)  # A-
-            except IndexError:
+            except (IndexError, TypeError):
                 energy3 = '00 00'
             try:
-                tmp_energy4 = f"{i[5] * int(impulse) / 10000:.{4}f}"  # R-
+                tmp_energy4 = f"{note[5] * int(impulse) / 10000:.{4}f}"  # R-
                 # tmp_energy4 = str(self.round_up(i[5] * int(impulse) / 10000, 4))
                 energy4 = self.to_fixed(tmp_energy4)  # R-
-            except IndexError:
+            except (IndexError, TypeError):
                 energy4 = '00 00'
-
             if flag_array == 0:
-                cmd_command = cmd.WRITE_BANK_1
+                cmd_command = cmd.WRITE_BANK_1 if not cfg.REVERSE else cmd.WRITE_BANK_2
+                if state == '09' or state == '29':
+                    state = str(int(state) - 1).zfill(2)
             else:
-                state = str(int(state) + 1).zfill(2)
-                cmd_command = cmd.WRITE_BANK_2
+                cmd_command = cmd.WRITE_BANK_2 if not cfg.REVERSE else cmd.WRITE_BANK_1
+                if state == '08' or state == '28':
+                    state = str(int(state) + 1).zfill(2)
 
             send = f"{current_offset} 0F {state} {time} {date} 1E {energy} {energy3} {energy2} {energy4}"
 
             out = self.exchange(cmd_command, 4, param=send)[1]
-            check_response(self.write_profile.__doc__, out)
+            check_response(f'[{i} срез][{int_offset}][Bank-{flag_array}] запись', out)
 
             int_offset = int(tmp_offset, 16) + 16
-            if int_offset == 65536 or int_offset == 131071:
+            if int_offset == 65536 or int_offset == 131072:
                 int_offset = 0
                 flag_array = flag_array ^ 1
 
@@ -748,9 +758,9 @@ class IncotexProtocol(AbstractIncotexProtocol):
         for _ in range(slices):
 
             if flag_array == 0:
-                cmd_command = cmd.READ_BANK_1
+                cmd_command = cmd.READ_BANK_1 if not cfg.REVERSE else cmd.READ_BANK_2
             else:
-                cmd_command = cmd.READ_BANK_2
+                cmd_command = cmd.READ_BANK_2 if not cfg.REVERSE else cmd.READ_BANK_1
 
             send = f"{current_offset} 1E"
 
