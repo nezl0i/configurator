@@ -21,35 +21,28 @@ class IncotexProtocol(AbstractIncotexProtocol):
     def test_channel(self, command: List[str], multi=True) -> None:
         """Тест канала связи """
         out = self.exchange(command, 4, multi=multi)
-        if out and out[1][0]:
-            check_response(self.test_channel.__doc__, out[1])
-        else:
-            sys.exit()
+        check_response(self.test_channel.__doc__, out[1])
 
     def open_session(self, command: List[str], multi=True) -> None:
         """Авторизация с устройством """
         out = self.exchange(command, 4, multi=multi)
-        if out and out[1][0]:
-            self.status = True
-            check_response(self.open_session.__doc__, out[1])
-        else:
-            sys.exit()
+        self.status = True
+        check_response(self.open_session.__doc__, out[1])
 
     @is_status
     def close_session(self, command: List[str]) -> None:
         """Закрытие сеанса с устройством """
-        out = self.exchange(command, 4)[1]
-        if out[0]:
-            self.status = False
-        check_response(self.close_session.__doc__, out)
+        out = self.exchange(command, 4)
+        self.status = False
+        check_response(self.close_session.__doc__, out[1])
 
     @is_status
     def get_identifier(self, command: List[str]) -> str:
         """Идентификатор ПУ """
-        out = self.exchange(command, 5)[1]
-        result = int(out[2], 16)
+        out = self.exchange(command, 5)
+        result = int(out[1][2], 16)
         print(f'{c.GREEN}{self.get_identifier.__doc__} - {result}{c.END}\n')
-        return out[2]
+        return out[1][2]
 
     @is_status
     def get_serial_number(self, command: List[str]) -> tuple:
@@ -158,8 +151,6 @@ class IncotexProtocol(AbstractIncotexProtocol):
         # version  = "9" - Меркурий-234
         # version  = "11" - Меркурий-231i
 
-        param = None
-
         match int(version.split('.')[0], 16):
             case 9:
                 param = '19 00 0A'
@@ -169,6 +160,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
                 param = '10 00 0A'
             case _:
                 print('Тип прибора не определен.')
+                return
 
         out = self.exchange(command, 13, param=param)[1]
         shunt_mode = int(out[3], 16)
@@ -195,6 +187,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
 
     @is_status
     def write_shunt(self, command: List[str], code=True) -> None:
+        """Установка шунта"""
 
         percent = int(input('Процент недоучета: '))
         w_code = '01' if code else '00'
@@ -208,7 +201,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
             value = format(int(100 / percent), "02X")
             param = f'00 {value} 02 {w_code} 00 00 00 00 00 00'
         out = self.exchange(command, 4, param=param)[1]
-        check_response('Команда записи шунта', out)
+        check_response(self.write_shunt.__doc__, out)
 
     @is_status
     def get_time(self, command: List[str]) -> None:
@@ -514,11 +507,8 @@ class IncotexProtocol(AbstractIncotexProtocol):
         tmp_hex = format(int(tmp_obj), '04x')
         return f'{tmp_hex[2:]} {tmp_hex[:2]}'
 
-    def get_last_profile(self, command: List[str], impulse: str):
-
-        if impulse is None:
-            print("Не авторизован.")
-            return
+    @is_status
+    def get_last_profile(self, command: List[str]):
 
         out = self.exchange(command, 12)
 
@@ -540,12 +530,10 @@ class IncotexProtocol(AbstractIncotexProtocol):
         return status_byte, answer, flag_array
 
     @is_status
-    def write_profile(self, command: List[str], impulse: str, revision: str, sheet: str) -> None:
+    def write_profile(self, command: List[str], impulse: str, sheet: str) -> None:
         """Запись профиля мощности"""
 
-        status_byte, answer, flag_array = self.get_last_profile(command, impulse)
-
-        # check_profile = status_byte[3]
+        status_byte, answer, flag_array = self.get_last_profile(command)
         # koeff = {'00': 10, '01': 1, '02': 2, '03': 2}
 
         if answer[3] == '00':
@@ -701,7 +689,7 @@ class IncotexProtocol(AbstractIncotexProtocol):
     def read_profile(self, command: List[str], impulse: str, serial: str) -> None:
         """ Чтение профиля мощности"""
 
-        answer, flag_array = self.get_last_profile(command, impulse)
+        status_byte, answer, flag_array = self.get_last_profile(command, impulse)
 
         if answer[3] == '00':
             print(f'{c.FAIL}Дождитесь первого среза.{c.END}')

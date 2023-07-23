@@ -1,11 +1,12 @@
 import sys
 from common.logo import c
+from config import config as cfg
 from core.protocol import protocol
-from core.build_device import director, device
+from common.class_brut import Brutforce
 from common.enum_command import ICommand
 from common.menu import menu, event_menu
-from common.class_brut import Brutforce
-from config import config as cfg
+from core.build_device import director, device
+
 
 command = ICommand()
 
@@ -21,13 +22,8 @@ def main_menu():
         if ready in to_answer:
             main_menu()
         else:
-            # print(f'{c.FAIL}Не верно указан параметр{c.END}\n')
             sys.exit()
-    except ValueError:
-        pass
-    except KeyboardInterrupt:
-        pass
-    except KeyError:
+    except (ValueError, KeyboardInterrupt, KeyError):
         main_menu()
 
 
@@ -74,7 +70,7 @@ def choice(tmp):
         case 19:
             protocol.read_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE, device.IA.DEVICE_SERIAL_NUMBER)
         case 20:
-            protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE, device.IA.DEVICE_REVISION, cfg.SHEET_NAME)
+            protocol.write_profile(command.LAST_PROFILE, device.IA.DEVICE_IMPULSE, cfg.SHEET_NAME)
         case 0:
             sys.exit()
 
